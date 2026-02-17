@@ -1,4 +1,3 @@
-import torch
 from torchvision import datasets, transforms
 
 transform = transforms.Compose([
@@ -7,7 +6,7 @@ transform = transforms.Compose([
 ])
 
 # Download training set
-train_dataset = datasets.KMNIST(
+train_dataset = datasets.FashionMNIST(
     root="./data",
     train=True,
     download=True,
@@ -15,7 +14,7 @@ train_dataset = datasets.KMNIST(
 )
 
 # Download test set
-test_dataset = datasets.KMNIST(
+test_dataset = datasets.FashionMNIST(
     root="./data",
     train=False,
     download=True,
