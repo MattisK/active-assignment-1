@@ -6,6 +6,9 @@ dist/
 wheels/
 *.egg-info
 
+# ignore data files
+data/
+
 # Virtual environments
 .venv
 
