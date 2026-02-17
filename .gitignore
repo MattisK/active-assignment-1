@@ -11,3 +11,6 @@ wheels/
 
 #vs code settings
 .vscode
+
+#Folders
+./data
