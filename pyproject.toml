@@ -3,8 +3,13 @@ name = "active-1"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11, <3.12"
 dependencies = [
-    "torch>=2.10.0",
-    "torchvision>=0.25.0",
+    "torch==2.2.2",
+    "torchvision==0.17.2",
+    "scikit-learn",
+    "matplotlib",
+    "seaborn",
+    "pandas",
+    "optuna",
 ]
