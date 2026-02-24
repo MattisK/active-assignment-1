@@ -277,7 +277,7 @@ if __name__ == "__main__":
     bounds = np.array([
         [NUM_FILTERS_MIN, NUM_FILTERS_MAX],
         [KERNEL_SIZE_MIN, KERNEL_SIZE_MAX],
-        [NUM_UNITS_MIN, NUM_FILTERS_MAX],
+        [NUM_UNITS_MIN, NUM_UNITS_MAX],
         [LEARNING_RATE_MIN, LEARNING_RATE_MAX]
     ])
 
