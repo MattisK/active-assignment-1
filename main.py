@@ -21,7 +21,7 @@ N_FOLDS = 5               # K-fold cross-validation folds (more = more robust bu
 EPOCHS_PER_TRIAL = 1      # Training epochs per trial (more = better accuracy but slower)
 INITIAL_POINTS = 1        # Specify points for bayesian optimization
 BO_ITERATIONS = 1         # Number of iterations for bayesian optimization
-BO_CANDIDATES = 200       # Set number of candidates for hyperparameter optimization.
+BO_CANDIDATES = 200       # Set number of candidates for hyperparameter optimization
 
 # Data settings
 USE_FULL_DATASET = True   # Set to False to use subset for quick testing

@@ -12,7 +12,8 @@ class CNN(nn.Module):
         
         self.fc1 = nn.Linear(conv_output_size, num_units)
         self.fc2 = nn.Linear(num_units, 10)
-        
+
+ 
     def forward(self, x):
         x = self.pool(self.relu(self.conv1(x)))
         x = x.view(x.size(0), -1)
