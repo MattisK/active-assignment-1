@@ -17,7 +17,6 @@ import seaborn as sns
 #                         CONFIGURATION
 # ============================================================
 
-NUM_TRIALS = 50           # Number of hyperparameter combinations to try (more = better but slower)
 N_FOLDS = 5               # K-fold cross-validation folds (more = more robust but slower)
 EPOCHS_PER_TRIAL = 1      # Training epochs per trial (more = better accuracy but slower)
 INITIAL_POINTS = 1        # Specify points for bayesian optimization
@@ -34,13 +33,10 @@ LEARNING_RATE_MIN = 0.001
 LEARNING_RATE_MAX = 0.1
 NUM_FILTERS_MIN = 16      # Minimum convolutional filters
 NUM_FILTERS_MAX = 64      # Maximum convolutional filters
-FILTERS_STEP = 8
 KERNEL_SIZE_MIN = 3       # Minimum kernel size (must be odd)
 KERNEL_SIZE_MAX = 7       # Maximum kernel size (must be odd)
-KERNEL_SIZE_STEP = 2
 NUM_UNITS_MIN = 50        # Minimum units in dense layer
 NUM_UNITS_MAX = 200       # Maximum units in dense layer
-UNITS_STEP = 25
 
 # Manual seed for reproducibility
 MANUAL_SEED = 0
