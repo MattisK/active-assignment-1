@@ -1,62 +1,0 @@
-[I 2026-02-24 09:22:26,402] A new study created in memory with name: no-name-3380fc14-0379-488f-8785-6a10b9dfb64c
-Starting Bayesian Optimization for Fashion MNIST CNN
-============================================================
-  0%|          | 0/10 [00:00<?, ?it/s]                                        0%|          | 0/10 [00:24<?, ?it/s]Best trial: 0. Best value: 0.8288:   0%|          | 0/10 [00:24<?, ?it/s]Best trial: 0. Best value: 0.8288:  10%|█         | 1/10 [00:24<03:39, 24.38s/it]                                                                                 Best trial: 0. Best value: 0.8288:  10%|█         | 1/10 [00:37<03:39, 24.38s/it]Best trial: 0. Best value: 0.8288:  10%|█         | 1/10 [00:37<03:39, 24.38s/it]Best trial: 0. Best value: 0.8288:  20%|██        | 2/10 [00:37<02:20, 17.55s/it]                                                                                 Best trial: 0. Best value: 0.8288:  20%|██        | 2/10 [00:55<02:20, 17.55s/it]Best trial: 2. Best value: 0.8367:  20%|██        | 2/10 [00:55<02:20, 17.55s/it]Best trial: 2. Best value: 0.8367:  30%|███       | 3/10 [00:55<02:04, 17.78s/it]                                                                                 Best trial: 2. Best value: 0.8367:  30%|███       | 3/10 [01:07<02:04, 17.78s/it]Best trial: 2. Best value: 0.8367:  30%|███       | 3/10 [01:07<02:04, 17.78s/it]Best trial: 2. Best value: 0.8367:  40%|████      | 4/10 [01:07<01:34, 15.77s/it]                                                                                 Best trial: 2. Best value: 0.8367:  40%|████      | 4/10 [01:23<01:34, 15.77s/it]Best trial: 2. Best value: 0.8367:  40%|████      | 4/10 [01:23<01:34, 15.77s/it]Best trial: 2. Best value: 0.8367:  50%|█████     | 5/10 [01:23<01:18, 15.69s/it]                                                                                 Best trial: 2. Best value: 0.8367:  50%|█████     | 5/10 [01:37<01:18, 15.69s/it]Best trial: 2. Best value: 0.8367:  50%|█████     | 5/10 [01:37<01:18, 15.69s/it]Best trial: 2. Best value: 0.8367:  60%|██████    | 6/10 [01:37<01:00, 15.09s/it]                                                                                 Best trial: 2. Best value: 0.8367:  60%|██████    | 6/10 [01:53<01:00, 15.09s/it]Best trial: 2. Best value: 0.8367:  60%|██████    | 6/10 [01:53<01:00, 15.09s/it]Best trial: 2. Best value: 0.8367:  70%|███████   | 7/10 [01:53<00:46, 15.54s/it]                                                                                 Best trial: 2. Best value: 0.8367:  70%|███████   | 7/10 [02:04<00:46, 15.54s/it]Best trial: 7. Best value: 0.8373:  70%|███████   | 7/10 [02:04<00:46, 15.54s/it]Best trial: 7. Best value: 0.8373:  80%|████████  | 8/10 [02:04<00:28, 14.13s/it]                                                                                 Best trial: 7. Best value: 0.8373:  80%|████████  | 8/10 [02:27<00:28, 14.13s/it]Best trial: 7. Best value: 0.8373:  80%|████████  | 8/10 [02:27<00:28, 14.13s/it]Best trial: 7. Best value: 0.8373:  90%|█████████ | 9/10 [02:27<00:16, 16.79s/it]                                                                                 Best trial: 7. Best value: 0.8373:  90%|█████████ | 9/10 [02:40<00:16, 16.79s/it]Best trial: 7. Best value: 0.8373:  90%|█████████ | 9/10 [02:40<00:16, 16.79s/it]Best trial: 7. Best value: 0.8373: 100%|██████████| 10/10 [02:40<00:00, 15.72s/it]Best trial: 7. Best value: 0.8373: 100%|██████████| 10/10 [02:40<00:00, 16.09s/it]
-
-[Trial 0] filters=48, kernel=7, units=150, lr=0.0056
-  → CV Accuracy: 82.88%
-[I 2026-02-24 09:22:50,814] Trial 0 finished with value: 0.8288 and parameters: {'learning_rate': 0.005611516415334507, 'num_filters': 48, 'kernel_size': 7, 'num_units': 150}. Best is trial 0 with value: 0.8288.
-
-[Trial 1] filters=16, kernel=3, units=200, lr=0.0021
-  → CV Accuracy: 78.61%
-[I 2026-02-24 09:23:03,592] Trial 1 finished with value: 0.7861 and parameters: {'learning_rate': 0.0020513382630874496, 'num_filters': 16, 'kernel_size': 3, 'num_units': 200}. Best is trial 0 with value: 0.8288.
-
-[Trial 2] filters=40, kernel=3, units=200, lr=0.0159
-  → CV Accuracy: 83.67%
-[I 2026-02-24 09:23:21,651] Trial 2 finished with value: 0.8367 and parameters: {'learning_rate': 0.015930522616241012, 'num_filters': 40, 'kernel_size': 3, 'num_units': 200}. Best is trial 2 with value: 0.8367.
-
-[Trial 3] filters=24, kernel=3, units=75, lr=0.0462
-  → CV Accuracy: 83.40%
-[I 2026-02-24 09:23:34,342] Trial 3 finished with value: 0.8340000000000001 and parameters: {'learning_rate': 0.04622589001020832, 'num_filters': 24, 'kernel_size': 3, 'num_units': 75}. Best is trial 2 with value: 0.8367.
-
-[Trial 4] filters=32, kernel=5, units=100, lr=0.0041
-  → CV Accuracy: 82.04%
-[I 2026-02-24 09:23:49,895] Trial 4 finished with value: 0.8204 and parameters: {'learning_rate': 0.0040596116104843075, 'num_filters': 32, 'kernel_size': 5, 'num_units': 100}. Best is trial 2 with value: 0.8367.
-
-[Trial 5] filters=16, kernel=3, units=100, lr=0.0167
-  → CV Accuracy: 83.32%
-[I 2026-02-24 09:24:03,814] Trial 5 finished with value: 0.8331999999999999 and parameters: {'learning_rate': 0.01673808578875214, 'num_filters': 16, 'kernel_size': 3, 'num_units': 100}. Best is trial 2 with value: 0.8367.
-
-[Trial 6] filters=40, kernel=3, units=125, lr=0.0082
-  → CV Accuracy: 82.46%
-[I 2026-02-24 09:24:20,287] Trial 6 finished with value: 0.8246 and parameters: {'learning_rate': 0.008168455894760165, 'num_filters': 40, 'kernel_size': 3, 'num_units': 125}. Best is trial 2 with value: 0.8367.
-
-[Trial 7] filters=16, kernel=5, units=75, lr=0.0153
-  → CV Accuracy: 83.73%
-[I 2026-02-24 09:24:31,385] Trial 7 finished with value: 0.8372999999999999 and parameters: {'learning_rate': 0.015304852121831466, 'num_filters': 16, 'kernel_size': 5, 'num_units': 75}. Best is trial 7 with value: 0.8372999999999999.
-
-[Trial 8] filters=48, kernel=7, units=175, lr=0.0013
-  → CV Accuracy: 80.30%
-[I 2026-02-24 09:24:54,030] Trial 8 finished with value: 0.803 and parameters: {'learning_rate': 0.0013492834268013251, 'num_filters': 48, 'kernel_size': 7, 'num_units': 175}. Best is trial 7 with value: 0.8372999999999999.
-
-[Trial 9] filters=16, kernel=7, units=125, lr=0.0041
-  → CV Accuracy: 81.38%
-[I 2026-02-24 09:25:07,363] Trial 9 finished with value: 0.8138 and parameters: {'learning_rate': 0.0040665633135147945, 'num_filters': 16, 'kernel_size': 7, 'num_units': 125}. Best is trial 7 with value: 0.8372999999999999.
-
-============================================================
-Optimization Complete!
-
-Best Parameters:
-  learning_rate: 0.015304852121831466
-  num_filters: 16
-  kernel_size: 5
-  num_units: 75
-
-Best CV Accuracy: 83.73%
-
-✓ Saved convergence plot to 'optimization_convergence.png'
-✓ Saved learning rate plot to 'learning_rate_distribution.png'
-✓ Saved units plot to 'units_distribution.png'
-✓ Saved parameter importance plot to 'parameter_importance.png'
-
-Done!
