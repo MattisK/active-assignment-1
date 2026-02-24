@@ -25,7 +25,7 @@ class CNN(nn.Module):
         weight_decay = 0.0001
         learning_rate = 0.001
 
-        self.features = nn.Sequential(
+        conv1 = nn.Sequential(
         nn.Conv2d(in_channels=in_channels, out_channels=32, kernel_size=conv_kernel, padding=1),
         nn.MaxPool2d(kernel_size=pool_kernel, stride=pool_stride),
         nn.ReLU(),
@@ -35,6 +35,8 @@ class CNN(nn.Module):
         nn.Flatten(),
         
             ).to(device)
+
+        self.features = conv1
 
         self.classifier = nn.Sequential(
             nn.Linear(in_features=features_fore_linear, out_features=128),
@@ -89,4 +91,17 @@ class CNN(nn.Module):
                 self.train()
         
         return train_accs, test_accs
+    
+    def eval_model(self, test_dataloader):
+        self.eval()
+        total_acc = 0
+        for inputs, labels in test_dataloader:
 
+            logits = self(inputs)
+            total_acc += (torch.argmax(logits, dim=1) == labels).sum().item()
+
+        total_acc = total_acc / len(test_dataloader.dataset)
+
+        return total_acc
+    
+    
