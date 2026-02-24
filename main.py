@@ -111,7 +111,7 @@ def evaluate_model(model, test_loader, device):
 
             _, predicted = torch.max(outputs.data, 1)
 
-            total += labels.size(0)
+            total += labels_d.size(0)
             correct += (predicted == labels_d).sum().item()
     
     return correct / total
