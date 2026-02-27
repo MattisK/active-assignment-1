@@ -9,6 +9,9 @@ from torch.utils.data import Subset, DataLoader, SubsetRandomSampler
 import torch.nn as nn
 import torch.optim as optim
 from scipy.stats import norm
+import csv
+import json
+import os
 
 
 # ============================================================
@@ -16,9 +19,10 @@ from scipy.stats import norm
 # ============================================================
 
 N_FOLDS = 5               # K-fold cross-validation folds (more = more robust but slower)
-EPOCHS_PER_TRIAL = 1      # Training epochs per trial (more = better accuracy but slower)
-INITIAL_POINTS = 1        # Specify points for bayesian optimization
-BO_ITERATIONS = 1         # Number of iterations for bayesian optimization
+EPOCHS_PER_TRIAL = 20      # Training epochs per trial (more = better accuracy but slower)
+EARLY_STOPPING_PATIENCE = 4  # Stop training if validation accuracy falls for this many consecutive epochs
+INITIAL_POINTS = 5        # Specify points for bayesian optimization
+BO_ITERATIONS = 20         # Number of iterations for bayesian optimization
 BO_CANDIDATES = 200       # Set number of candidates for hyperparameter optimization
 
 # Data settings
@@ -26,18 +30,20 @@ USE_FULL_DATASET = True   # Set to False to use subset for quick testing
 SUBSET_SIZE = 10000       # Number of samples to use if USE_FULL_DATASET=False
 BATCH_SIZE = 64           # Batch size for training (higher = faster but needs more memory)
 
-# Hyperparameter search space (ranges to explore)
-LEARNING_RATE_MIN = 0.001
-LEARNING_RATE_MAX = 0.1
-NUM_FILTERS_MIN = 16      # Minimum convolutional filters
-NUM_FILTERS_MAX = 64      # Maximum convolutional filters
-KERNEL_SIZE_MIN = 3       # Minimum kernel size (must be odd)
-KERNEL_SIZE_MAX = 7       # Maximum kernel size (must be odd)
-NUM_UNITS_MIN = 50        # Minimum units in dense layer
-NUM_UNITS_MAX = 200       # Maximum units in dense layer
+# Fixed architecture (to isolate learning rate effects)
+NUM_FILTERS = 32
+KERNEL_SIZE = 5
+NUM_UNITS = 32
 
-# Manual seed for reproducibility
-MANUAL_SEED = 0
+# Learning rate search space
+LEARNING_RATE_MIN = 0.0001
+LEARNING_RATE_MAX = 0.1
+
+# Manual seeds for reproducibility — each seed produces a fully independent run
+MANUAL_SEEDS = [21, 31, 42, 48, 64, 123, 256, 2048, 3651]
+
+# Optimizers to compare
+OPTIMIZERS = ["SGD", "Adam", "RMSProp", "AdaGrad", "Adadelta", "Adafactor", "AdamW", "SparseAdam", "Adamax", "ASGD", "LBFGS", "NAdam", "RAdam", "Rprop"]
 
 # ============================================================
 #                         Functions
@@ -69,13 +75,48 @@ def load_dataset():
     return train_dataset, test_dataset
 
 
-def train_model(model, train_loader, criterion, optimizer, device, epochs=EPOCHS_PER_TRIAL):
+def create_optimizer(name, model_params, lr):
     """
-    The training loop for the model.
+    Factory function to create an optimizer by name.
+    """
+    name_upper = name.upper()
+    if name_upper == "SGD":
+        return optim.SGD(model_params, lr=lr, momentum=0.9)
+    elif name_upper == "ADAM":
+        return optim.Adam(model_params, lr=lr)
+    elif name_upper == "RMSPROP":
+        return optim.RMSprop(model_params, lr=lr)
+    elif name_upper == "ADAGRAD":
+        return optim.Adagrad(model_params, lr=lr)
+    else:
+        raise ValueError(f"Unknown optimizer: {name}")
+
+
+def train_model(model, train_loader, criterion, optimizer, device, epochs=EPOCHS_PER_TRIAL,
+                val_loader=None, patience=EARLY_STOPPING_PATIENCE):
+    """
+    The training loop for the model. Returns:
+      - model: trained model with best weights restored (if val_loader given)
+      - epoch_losses: avg training loss per epoch (length = actual epochs run)
+      - epoch_val_accs: validation accuracy after each epoch (length = actual epochs run)
+      - best_epoch: 0-based index of the epoch with the highest validation accuracy
+      - early_stopped: True if training was halted by early stopping
+    If val_loader is provided, early stopping halts training when validation accuracy
+    has not improved for `patience` consecutive epochs.
     """
     model.train()
+    epoch_losses = []
+    epoch_val_accs = []
 
-    for _ in tqdm(range(epochs)):
+    best_val_acc = -np.inf
+    best_model_state = None
+    best_epoch = 0
+    consecutive_decreases = 0
+    early_stopped = False
+
+    for epoch_idx in tqdm(range(epochs)):
+        running_loss = 0.0
+        num_batches = 0
         for inputs, labels in train_loader:
             inputs_d = inputs.to(device)
             labels_d = labels.to(device)
@@ -87,8 +128,34 @@ def train_model(model, train_loader, criterion, optimizer, device, epochs=EPOCHS
             loss = criterion(outputs, labels_d)
             loss.backward()
             optimizer.step()
+
+            running_loss += loss.item()
+            num_batches += 1
+
+        epoch_losses.append(running_loss / num_batches)
+
+        # Early stopping: evaluate on validation set after each epoch.
+        if val_loader is not None:
+            val_acc = evaluate_model(model, val_loader, device)
+            model.train()  # Switch back to training mode after evaluation.
+            epoch_val_accs.append(val_acc)
+
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                best_model_state = {k: v.clone() for k, v in model.state_dict().items()}
+                best_epoch = epoch_idx
+                consecutive_decreases = 0
+            else:
+                consecutive_decreases += 1
+                if consecutive_decreases >= patience:
+                    early_stopped = True
+                    break
+
+    # Restore the best weights seen during training.
+    if best_model_state is not None:
+        model.load_state_dict(best_model_state)
             
-    return model
+    return model, epoch_losses, epoch_val_accs, best_epoch, early_stopped
 
 
 def evaluate_model(model, test_loader, device):
@@ -121,14 +188,20 @@ def cross_validate(train_dataset,
                    num_units,
                    learning_rate,
                    device,
-                   n_folds=N_FOLDS):
+                   optimizer_name="SGD",
+                   n_folds=N_FOLDS,
+                   seed=42):
     """
     Computes the mean accuracy of the model by using k-fold cross validation.
     It is possible to not use the full dataset here. By default uses N_FOLDS as
-    n_splits in the kFold initialization. Returns the mean accuracy.
+    n_splits in the kFold initialization. Returns the mean accuracy and convergence data.
     """
-    kfold = KFold(n_splits=n_folds, shuffle=True, random_state=MANUAL_SEED)
+    kfold = KFold(n_splits=n_folds, shuffle=True, random_state=seed)
     scores = []
+    all_fold_losses = []
+    all_fold_val_accs = []
+    fold_best_epochs = []
+    fold_early_stopped = []
 
     # Allows us to not use the full dataset.
     if not USE_FULL_DATASET:
@@ -146,36 +219,51 @@ def cross_validate(train_dataset,
         model = CNN(int(num_filters), int(kernel_size), int(num_units)).to(device)
 
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.SGD(model.parameters(), lr=float(learning_rate), momentum=0.9)
+        optimizer = create_optimizer(optimizer_name, model.parameters(), float(learning_rate))
 
         # Training loop and accuracy calculation.
-        model = train_model(model, train_loader, criterion, optimizer, device)
+        model, epoch_losses, epoch_val_accs, best_epoch, early_stopped = train_model(
+            model, train_loader, criterion, optimizer, device, val_loader=val_loader
+        )
         accuracy = evaluate_model(model, val_loader, device)
         scores.append(accuracy)
+        all_fold_losses.append(epoch_losses)
+        all_fold_val_accs.append(epoch_val_accs)
+        fold_best_epochs.append(best_epoch)
+        fold_early_stopped.append(early_stopped)
     
-    return np.mean(scores)
+    # NaN-safe averaging over potentially ragged per-fold lists: early stopping can cause
+    # different folds to run for different numbers of epochs.
+    max_epochs = max(len(fl) for fl in all_fold_losses)
+    padded_losses = [fl + [np.nan] * (max_epochs - len(fl)) for fl in all_fold_losses]
+    avg_convergence = np.nanmean(padded_losses, axis=0).tolist()
+
+    padded_val_accs = [va + [np.nan] * (max_epochs - len(va)) for va in all_fold_val_accs]
+    avg_val_accs = np.nanmean(padded_val_accs, axis=0).tolist()
+
+    return (np.mean(scores), scores, avg_convergence, all_fold_losses,
+            avg_val_accs, all_fold_val_accs, fold_best_epochs, fold_early_stopped)
 
 
-def objective(params, train_dataset, device):
+def objective(lr, train_dataset, device, optimizer_name="SGD", seed=42):
     """
-    Objective function as a wrapper for the cross validation, given the parameters we want to optimize.
+    Objective function as a wrapper for cross validation with fixed architecture.
+    Only learning rate is optimized.
     """
-    num_filters, kernel_size, num_units, lr = params
-
-    # Kernel size must be odd.
-    if int(kernel_size) % 2 == 0:
-        kernel_size += 1
-
-    accuracy = cross_validate(
+    (accuracy, fold_scores, convergence, fold_losses,
+     avg_val_accs, fold_val_accs, fold_best_epochs, fold_early_stopped) = cross_validate(
         train_dataset,
-        int(num_filters),
-        int(kernel_size),
-        int(num_units),
+        NUM_FILTERS,
+        KERNEL_SIZE,
+        NUM_UNITS,
         float(lr),
-        device
+        device,
+        optimizer_name=optimizer_name,
+        seed=seed
     )
 
-    return accuracy
+    return (accuracy, fold_scores, convergence, fold_losses,
+            avg_val_accs, fold_val_accs, fold_best_epochs, fold_early_stopped)
 
 
 def k_SE(Xi, Xj, l = 1.0, sigma = 1.0):
@@ -225,54 +313,65 @@ def normalize(X, bounds):
     """
     Normalizes the data with respect to the paramter bounds.
     """
-    return (X - bounds[:, 0] / bounds[:, 1] - bounds[:, 0])
+    return (X - bounds[:, 0]) / (bounds[:, 1] - bounds[:, 0])
 
 
-def bayesian_optimization(dataset, bounds, device):
+def bayesian_optimization(dataset, bounds, device, optimizer_name="SGD", seed=42):
     """
-    Bayesian optimization (BO) on a given dataset with specified bounds.
-    Stores the best accuracy and corresponding parameters for each BO iteration.
-    These are computed by normalizing the data, then compute the posterior and finding
-    the expected improvement (EI). The EI is used to find the max argument for the
-    candidates, this value is then put through the objective function to find the next y.
-    Returns the accuracy and parameters in a list by BO iteration.
+    Bayesian optimization (BO) for learning rate only with fixed architecture.
+    Uses 1D Gaussian Process to find optimal learning rate for each optimizer.
+    Returns detailed trial records.
     """
-    best_accuracy = []
-    best_params = []
-
+    trial_records = []  # Detailed per-trial data for CSV
     X = []
     y = []
+    best_so_far = -np.inf
 
-    # Make intial points for X and y with random parameters.
-    for _ in tqdm(range(INITIAL_POINTS)):
-        params = np.array([
-            np.random.randint(NUM_FILTERS_MIN, NUM_FILTERS_MAX),
-            np.random.randint(KERNEL_SIZE_MIN, KERNEL_SIZE_MAX),
-            np.random.randint(NUM_UNITS_MIN, NUM_UNITS_MAX),
-            np.random.uniform(LEARNING_RATE_MIN, LEARNING_RATE_MAX)            
-        ])
+    # Make initial points for X and y with random learning rates.
+    for i in tqdm(range(INITIAL_POINTS)):
+        lr = np.random.uniform(LEARNING_RATE_MIN, LEARNING_RATE_MAX)
 
-        score = objective(params, dataset, device)
+        (score, fold_scores, convergence, fold_losses,
+         avg_val_accs, fold_val_accs, fold_best_epochs, fold_early_stopped) = objective(
+            lr, dataset, device, optimizer_name, seed=seed
+        )
 
-        X.append(params)
+        X.append(lr)
         y.append(score)
+        best_so_far = max(best_so_far, score)
+
+        trial_records.append({
+            "iteration": i,
+            "trial_type": "initial",
+            "learning_rate": lr,
+            "mean_accuracy": score,
+            "fold_accuracies": fold_scores,
+            "avg_epoch_losses": convergence,
+            "fold_epoch_losses": fold_losses,
+            "avg_epoch_val_accs": avg_val_accs,
+            "fold_epoch_val_accs": fold_val_accs,
+            "fold_best_epochs": fold_best_epochs,
+            "fold_early_stopped": fold_early_stopped,
+            "best_accuracy_so_far": best_so_far,
+            "ei_value": None,
+        })
     
-    # Convert to a numpy array for later calculations.
-    X = np.array(X)
+    # Convert to numpy arrays for GP calculations.
+    X = np.array(X).reshape(-1, 1)  # Need 2D for GP
     y = np.array(y)
 
     # Bayesian optimization loop.
-    for _ in tqdm(range(BO_ITERATIONS)):
+    for i in tqdm(range(BO_ITERATIONS)):
         # Candidates uniformly chosen at random.
         candidates = np.random.uniform(
-            bounds[:, 0],
-            bounds[:, 1],
-            size=(BO_CANDIDATES, 4)
+            bounds[0],
+            bounds[1],
+            size=(BO_CANDIDATES, 1)
         )
 
         # Normalize data for easier posterior calculations.
-        X_norm = normalize(X, bounds)
-        candidates_norm = normalize(candidates, bounds)
+        X_norm = (X - bounds[0]) / (bounds[1] - bounds[0])
+        candidates_norm = (candidates - bounds[0]) / (bounds[1] - bounds[0])
 
         mu, sigma = gp_posterior_predict(X_norm, y, candidates_norm)
 
@@ -280,47 +379,237 @@ def bayesian_optimization(dataset, bounds, device):
         mu = mu.ravel()
         sigma = sigma.ravel()
 
-        # Find the best y so far and use it with mu and sigma to calculate the posterior.
+        # Find the best y so far and use it with mu and sigma to calculate EI.
         best = np.max(y)
         ei = expected_improvement(mu, sigma, best)
 
         # next_x is the candidate at the argmax for EI.
-        next_x = candidates[np.argmax(ei)]
+        best_ei_idx = np.argmax(ei)
+        next_lr = candidates[best_ei_idx, 0]
+        best_ei_value = float(ei[best_ei_idx])
 
-        # next_y is found by putting next_x into the objective function.
-        next_y = objective(next_x, dataset, device)
+        # next_y is found by putting next_lr into the objective function.
+        (next_y, fold_scores, next_convergence, fold_losses,
+         avg_val_accs, fold_val_accs, fold_best_epochs, fold_early_stopped) = objective(
+            next_lr, dataset, device, optimizer_name, seed=seed
+        )
 
         # Stack and append results.
-        X = np.vstack([X, next_x])
+        X = np.vstack([X, [[next_lr]]])
         y = np.append(y, next_y)
+        best_so_far = max(best_so_far, next_y)
 
-        # Save results.
-        best_accuracy.append(np.max(y))
-        best_params.append(next_x)
+        trial_records.append({
+            "iteration": INITIAL_POINTS + i,
+            "trial_type": "bo",
+            "learning_rate": next_lr,
+            "mean_accuracy": next_y,
+            "fold_accuracies": fold_scores,
+            "avg_epoch_losses": next_convergence,
+            "fold_epoch_losses": fold_losses,
+            "avg_epoch_val_accs": avg_val_accs,
+            "fold_epoch_val_accs": fold_val_accs,
+            "fold_best_epochs": fold_best_epochs,
+            "fold_early_stopped": fold_early_stopped,
+            "best_accuracy_so_far": best_so_far,
+            "ei_value": best_ei_value,
+        })
 
-    return best_accuracy, best_params
+    return trial_records
 
 
 if __name__ == "__main__":
-    # Set the manual seed in Pytorch and Numpy.
-    torch.manual_seed(MANUAL_SEED)
-    np.random.seed(MANUAL_SEED)
-
     # Check if cuda is available. If so, use cuda. Otherwise CPU.
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load the dataset
     train_dataset, _ = load_dataset()
 
-    # Define boundaries based on the config.
-    bounds = np.array([
-        [NUM_FILTERS_MIN, NUM_FILTERS_MAX],
-        [KERNEL_SIZE_MIN, KERNEL_SIZE_MAX],
-        [NUM_UNITS_MIN, NUM_UNITS_MAX],
-        [LEARNING_RATE_MIN, LEARNING_RATE_MAX]
-    ])
+    # Define learning rate bounds (1D optimization).
+    bounds = np.array([LEARNING_RATE_MIN, LEARNING_RATE_MAX])
 
-    # Bayesian optimization.
-    best_accuracy, best_params = bayesian_optimization(train_dataset, bounds, device)
+    os.makedirs("results", exist_ok=True)
 
-    print(best_accuracy, best_params)
+    print(f"\nFixed Architecture: filters={NUM_FILTERS}, kernel={KERNEL_SIZE}, units={NUM_UNITS}")
+    print(f"Optimizing learning rate only: [{LEARNING_RATE_MIN}, {LEARNING_RATE_MAX}]\n")
+
+    # --- Build CSV column headers dynamically based on config ---
+    fold_acc_cols = [f"fold_{i+1}_accuracy" for i in range(N_FOLDS)]
+    # Per-fold training metadata (epochs actually run, whether early stopping fired, best epoch).
+    fold_meta_cols = (
+        [f"fold_{i+1}_epochs_run"     for i in range(N_FOLDS)] +
+        [f"fold_{i+1}_early_stopped"  for i in range(N_FOLDS)] +
+        [f"fold_{i+1}_best_epoch"     for i in range(N_FOLDS)]
+    )
+    # Average (across folds) per-epoch training loss and validation accuracy.
+    epoch_avg_loss_cols    = [f"epoch_{i+1}_avg_loss"    for i in range(EPOCHS_PER_TRIAL)]
+    epoch_avg_val_acc_cols = [f"epoch_{i+1}_avg_val_acc" for i in range(EPOCHS_PER_TRIAL)]
+    # Per-fold per-epoch training loss and validation accuracy.
+    fold_epoch_loss_cols = [
+        f"fold_{f+1}_epoch_{e+1}_loss"
+        for f in range(N_FOLDS)
+        for e in range(EPOCHS_PER_TRIAL)
+    ]
+    fold_epoch_val_acc_cols = [
+        f"fold_{f+1}_epoch_{e+1}_val_acc"
+        for f in range(N_FOLDS)
+        for e in range(EPOCHS_PER_TRIAL)
+    ]
+
+    trials_header = [
+        "seed", "optimizer", "iteration", "trial_type", "learning_rate",
+        "mean_accuracy", "accuracy_std",
+    ] + fold_acc_cols + [
+        "best_accuracy_so_far", "ei_value",
+    ] + fold_meta_cols + epoch_avg_loss_cols + epoch_avg_val_acc_cols + fold_epoch_loss_cols + fold_epoch_val_acc_cols
+
+    # --- CSV formatting helpers ---
+    def fmt(v):
+        """Format a numeric value as a 6-decimal string; empty string for None/NaN."""
+        if v is None:
+            return ""
+        try:
+            if np.isnan(float(v)):
+                return ""
+        except (TypeError, ValueError):
+            return str(v)
+        return f"{v:.6f}"
+
+    def pad_to(lst, length, fill=None):
+        """Pad lst with fill values up to length (no-op if already long enough)."""
+        return list(lst) + [fill] * max(0, length - len(lst))
+
+    # Open CSV in write mode (overwrites on re-run).
+    trials_path = "results/bo_trials.csv"
+    summary_path = "results/bo_summary.csv"
+
+    summary_rows = []
+
+    # Build configuration comments to write at the top of CSVs
+    config_comments = [
+        ["# Configuration"],
+        ["# N_FOLDS", N_FOLDS],
+        ["# EPOCHS_PER_TRIAL", EPOCHS_PER_TRIAL],
+        ["# EARLY_STOPPING_PATIENCE", EARLY_STOPPING_PATIENCE],
+        ["# INITIAL_POINTS", INITIAL_POINTS],
+        ["# BO_ITERATIONS", BO_ITERATIONS],
+        ["# BO_CANDIDATES", BO_CANDIDATES],
+        ["# BATCH_SIZE", BATCH_SIZE],
+        ["# NUM_FILTERS", NUM_FILTERS],
+        ["# KERNEL_SIZE", KERNEL_SIZE],
+        ["# NUM_UNITS", NUM_UNITS],
+        ["# LEARNING_RATE_MIN", LEARNING_RATE_MIN],
+        ["# LEARNING_RATE_MAX", LEARNING_RATE_MAX],
+        ["# MANUAL_SEEDS", str(MANUAL_SEEDS)],
+    ]
+
+    with open(trials_path, "w", newline="") as trials_file:
+        writer = csv.writer(trials_file)
+        for comment_row in config_comments:
+            writer.writerow(comment_row)
+        writer.writerow(trials_header)
+
+        for seed in MANUAL_SEEDS:
+          for opt_name in OPTIMIZERS:
+            print(f"\n{'='*60}")
+            print(f"  Optimizing Learning Rate for {opt_name} (seed={seed})")
+            print(f"{'='*60}\n")
+
+            # Reset seeds for fair comparison across optimizers.
+            torch.manual_seed(seed)
+            np.random.seed(seed)
+
+            trial_records = bayesian_optimization(
+                train_dataset, bounds, device, optimizer_name=opt_name, seed=seed
+            )
+
+            # Write each trial to CSV.
+            for rec in trial_records:
+                lr                  = rec["learning_rate"]
+                fold_accs           = rec["fold_accuracies"]
+                avg_losses          = rec["avg_epoch_losses"]
+                fold_losses         = rec["fold_epoch_losses"]       # list[list[float]]
+                avg_val_accs_rec    = rec["avg_epoch_val_accs"]      # list[float], len <= EPOCHS_PER_TRIAL
+                fold_val_accs       = rec["fold_epoch_val_accs"]     # list[list[float]]
+                fold_best_epochs_rec  = rec["fold_best_epochs"]      # list[int]
+                fold_early_stopped_rec = rec["fold_early_stopped"]   # list[bool]
+
+                # Per-fold epoch training losses, padded to EPOCHS_PER_TRIAL.
+                flat_fold_losses = []
+                for fl in fold_losses:
+                    flat_fold_losses.extend([fmt(v) for v in pad_to(fl, EPOCHS_PER_TRIAL)])
+
+                # Per-fold epoch validation accuracies, padded to EPOCHS_PER_TRIAL.
+                flat_fold_val_accs = []
+                for fv in fold_val_accs:
+                    flat_fold_val_accs.extend([fmt(v) for v in pad_to(fv, EPOCHS_PER_TRIAL)])
+
+                row = [
+                    seed,
+                    opt_name,
+                    rec["iteration"],
+                    rec["trial_type"],
+                    fmt(float(lr)),
+                    fmt(rec["mean_accuracy"]),
+                    fmt(np.std(fold_accs)),
+                ] + [
+                    fmt(a) for a in fold_accs                              # fold_N_accuracy
+                ] + [
+                    fmt(rec["best_accuracy_so_far"]),
+                    fmt(rec["ei_value"]) if rec["ei_value"] is not None else "",
+                ] + [
+                    str(len(fl)) for fl in fold_losses                     # fold_N_epochs_run
+                ] + [
+                    str(1 if es else 0) for es in fold_early_stopped_rec  # fold_N_early_stopped
+                ] + [
+                    str(be) for be in fold_best_epochs_rec                # fold_N_best_epoch
+                ] + [
+                    fmt(v) for v in pad_to(avg_losses, EPOCHS_PER_TRIAL)  # epoch_N_avg_loss
+                ] + [
+                    fmt(v) for v in pad_to(avg_val_accs_rec, EPOCHS_PER_TRIAL)  # epoch_N_avg_val_acc
+                ] + flat_fold_losses + flat_fold_val_accs
+
+                writer.writerow(row)
+
+            # Flush after each optimizer so partial results are saved.
+            trials_file.flush()
+
+            # Find the best trial for this optimizer.
+            best_rec = max(trial_records, key=lambda r: r["mean_accuracy"])
+            best_lr = best_rec["learning_rate"]
+
+            summary_rows.append({
+                "seed": seed,
+                "optimizer": opt_name,
+                "best_accuracy": best_rec["mean_accuracy"],
+                "accuracy_std": float(np.std(best_rec["fold_accuracies"])),
+                "best_learning_rate": float(best_lr),
+                "best_final_loss": best_rec["avg_epoch_losses"][-1],
+                "total_trials": len(trial_records),
+            })
+
+            print(f"\n{opt_name} (seed={seed}) Results:")
+            print(f"  Best accuracy: {best_rec['mean_accuracy']:.4f} "
+                  f"(±{np.std(best_rec['fold_accuracies']):.4f})")
+            print(f"  Best learning rate: {float(best_lr):.6f}")
+
+    # Write summary CSV (one row per optimizer).
+    with open(summary_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        for comment_row in config_comments:
+            writer.writerow(comment_row)
+        summary_writer = csv.DictWriter(f, fieldnames=summary_rows[0].keys())
+        summary_writer.writeheader()
+        summary_writer.writerows(summary_rows)
+
+    print(f"\nResults saved to:")
+    print(f"  Trials:  {trials_path}")
+    print(f"  Summary: {summary_path}")
+
+    # Print summary table.
+    print(f"\n{'='*60}")
+    print(f"  Summary (Fixed arch: {NUM_FILTERS} filters, {KERNEL_SIZE}x{KERNEL_SIZE} kernel, {NUM_UNITS} units)")
+    print(f"{'='*60}")
+    for row in summary_rows:
+        print(f"  {row['optimizer']:>8s} (seed={row['seed']}): accuracy = {row['best_accuracy']:.4f} "
+              f"(±{row['accuracy_std']:.4f}), lr = {row['best_learning_rate']:.6f}")
