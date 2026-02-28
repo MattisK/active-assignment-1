@@ -196,25 +196,47 @@ def run_friedman_test(acc_matrix):
 
 def run_posthoc_wilcoxon(acc_matrix, alpha=SIGNIFICANCE_LEVEL):
     """
-    Pairwise Wilcoxon signed-rank tests with Bonferroni correction.
+    Pairwise Wilcoxon signed-rank tests with Holm-Bonferroni step-down correction.
     Returns a DataFrame with columns: opt_A, opt_B, statistic, p_raw, p_corrected, significant.
     """
     optimizers = list(acc_matrix.columns)
-    n_comparisons = len(list(combinations(optimizers, 2)))
-    results = []
+    pairs = list(combinations(optimizers, 2))
+    m = len(pairs)
+    raw_results = []
 
-    for opt_a, opt_b in combinations(optimizers, 2):
+    for opt_a, opt_b in pairs:
         a = acc_matrix[opt_a].values
         b = acc_matrix[opt_b].values
 
-        # Wilcoxon requires at least some non-zero differences
         diff = a - b
         if np.all(diff == 0):
             stat, p_raw = np.nan, 1.0
         else:
             stat, p_raw = wilcoxon(a, b, alternative="two-sided")
 
-        p_corrected = min(p_raw * n_comparisons, 1.0)  # Bonferroni
+        raw_results.append((opt_a, opt_b, stat, p_raw))
+
+    # Sort by raw p-value for Holm step-down
+    raw_results.sort(key=lambda x: x[3])
+
+    results = []
+    holm_rejected = True  # Stays True until first non-rejection
+    prev_p_corrected = 0.0
+
+    for i, (opt_a, opt_b, stat, p_raw) in enumerate(raw_results):
+        # Holm multiplier: (m - i) where i is 0-indexed
+        p_corrected = p_raw * (m - i)
+        # Ensure monotonicity: corrected p can't decrease
+        p_corrected = max(p_corrected, prev_p_corrected)
+        p_corrected = min(p_corrected, 1.0)
+        prev_p_corrected = p_corrected
+
+        # Holm step-down: once we fail to reject, all subsequent are not rejected
+        if holm_rejected and p_corrected < alpha:
+            significant = True
+        else:
+            holm_rejected = False
+            significant = False
 
         results.append({
             "opt_A": opt_a,
@@ -222,7 +244,7 @@ def run_posthoc_wilcoxon(acc_matrix, alpha=SIGNIFICANCE_LEVEL):
             "statistic": stat,
             "p_raw": p_raw,
             "p_corrected": p_corrected,
-            "significant": p_corrected < alpha,
+            "significant": significant,
         })
 
     return pd.DataFrame(results)
@@ -505,7 +527,7 @@ if __name__ == "__main__":
 
     # ── Post-hoc Wilcoxon tests ───────────────────────────────
     print_section("POST-HOC: PAIRWISE WILCOXON SIGNED-RANK TESTS")
-    print(f"  Correction: Bonferroni (α = {SIGNIFICANCE_LEVEL})")
+    print(f"  Correction: Holm-Bonferroni step-down (α = {SIGNIFICANCE_LEVEL})")
     posthoc_df = run_posthoc_wilcoxon(acc_matrix)
 
     # Clean display with formatted p-values
