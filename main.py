@@ -488,7 +488,7 @@ if __name__ == "__main__":
     # Build configuration comments to write at the top of CSVs
     config_comments = [
         ["# Configuration"],
-        ["# N_FOLDS", N_FOLDS],
+        ["# N_FOLDS", N_FOLDS],    
         ["# EPOCHS_PER_TRIAL", EPOCHS_PER_TRIAL],
         ["# EARLY_STOPPING_PATIENCE", EARLY_STOPPING_PATIENCE],
         ["# INITIAL_POINTS", INITIAL_POINTS],
