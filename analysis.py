@@ -253,11 +253,16 @@ def run_posthoc_wilcoxon(acc_matrix, alpha=SIGNIFICANCE_LEVEL):
     return pd.DataFrame(results)
 
 
-def compute_mean_ranks(acc_matrix):
+def compute_mean_ranks(acc_matrix, optimizer_order=None):
     """
     Compute mean rank of each optimizer across seeds (lower = better accuracy).
     Friedman test is based on these ranks internally.
     """
+    if optimizer_order is not None:
+        available = [opt for opt in optimizer_order if opt in acc_matrix.columns]
+        if available:
+            acc_matrix = acc_matrix[available]
+
     # rank along columns (optimizers) per row (seed); higher accuracy → rank 1
     ranks = acc_matrix.rank(axis=1, ascending=False)
     return ranks.mean().sort_values()
@@ -319,10 +324,18 @@ def plot_accuracy_boxplot(acc_matrix, save_path="results/accuracy_boxplot.png"):
     print(f"  Saved: {save_path}")
 
 
-def plot_mean_rank_bar(acc_matrix, save_path="results/mean_rank.png"):
+def plot_mean_rank_bar(acc_matrix, save_path="results/mean_rank.png", optimizer_order=None):
     """Bar chart of mean ranks (Friedman-style)."""
-    mean_ranks = compute_mean_ranks(acc_matrix)
-    fig, ax = plt.subplots(figsize=(8, 5))
+    if optimizer_order is None:
+        optimizer_order = OPTIMIZERS
+
+    available = [opt for opt in optimizer_order if opt in acc_matrix.columns]
+    if len(available) < 2:
+        raise ValueError("Need at least 2 optimizers in acc_matrix to compute mean ranks.")
+
+    mean_ranks = compute_mean_ranks(acc_matrix[available], optimizer_order=available)
+    fig_height = max(5, 0.45 * len(mean_ranks) + 1.5)
+    fig, ax = plt.subplots(figsize=(8, fig_height))
     color_map = get_optimizer_color_map(mean_ranks.index)
     bar_colors = [color_map[opt] for opt in mean_ranks.index]
     mean_ranks.plot.barh(ax=ax, color=bar_colors)
@@ -524,10 +537,18 @@ def plot_early_stopping_frequency(trials_df, save_path="results/early_stopping_f
     ax.set_ylabel("Early Stopping Rate (fraction of folds)")
     ax.set_xlabel("Optimizer")
     ax.set_title("Early Stopping Frequency per Optimizer (across all trials & seeds)")
-    ax.set_ylim(0, 1)
+
+    max_rate = float(opt_es.max()) if len(opt_es) else 0.0
+    if max_rate <= 0:
+        y_max = 0.1
+    else:
+        y_max = min(1.0, max_rate * 1.25 + 0.02)
+
+    ax.set_ylim(0, y_max)
     ax.grid(True, alpha=0.3, axis="y")
+    label_offset = max(0.01, y_max * 0.02)
     for i, (opt, val) in enumerate(opt_es.items()):
-        ax.text(i, val + 0.02, f"{val:.1%}", ha="center", fontsize=9)
+        ax.text(i, min(y_max, val + label_offset), f"{val:.1%}", ha="center", fontsize=9)
     plt.xticks(rotation=0)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150)
@@ -773,7 +794,7 @@ if __name__ == "__main__":
     # ── Generate plots ────────────────────────────────────────
     print_section("GENERATING PLOTS")
     plot_accuracy_boxplot(acc_matrix)
-    plot_mean_rank_bar(acc_matrix)
+    plot_mean_rank_bar(acc_matrix, optimizer_order=OPTIMIZERS)
     plot_bo_convergence(trials_df)
     plot_lr_vs_accuracy(trials_df)
     plot_lr_vs_loss(trials_df)
