@@ -5,12 +5,35 @@ build/
 dist/
 wheels/
 *.egg-info
+*.log
+
+# Test/cache artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local env / secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# OS / IDE
+.idea/
+.DS_Store
 
 # Virtual environments
-.venv
+.venv/
+venv/
+ENV/
 
 #vs code settings
-.vscode
+.vscode/
 
 #data files
 /data/*
