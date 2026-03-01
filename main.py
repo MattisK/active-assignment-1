@@ -323,13 +323,6 @@ def expected_improvement(mu, sigma, best):
     return (mu - best) * norm.cdf(Z) + sigma * norm.pdf(Z)
 
 
-def normalize(X, bounds):
-    """
-    Normalizes the data with respect to the paramter bounds.
-    """
-    return (X - bounds[:, 0]) / (bounds[:, 1] - bounds[:, 0])
-
-
 def bayesian_optimization(dataset, bounds, device, optimizer_name="SGD", seed=42):
     """
     Bayesian optimization (BO) for learning rate only with fixed architecture.
