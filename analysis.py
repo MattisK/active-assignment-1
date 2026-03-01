@@ -17,7 +17,7 @@ INITIAL_POINTS = 5
 BO_ITERATIONS = 20
 EPOCHS_PER_TRIAL = 20
 
-USE_GENERATED_DATA = True  # Set to False once you have real results
+USE_GENERATED_DATA = False  # Set to False once you have real results
 
 SIGNIFICANCE_LEVEL = 0.05
 
