@@ -533,13 +533,16 @@ if __name__ == "__main__":
     # Clean display with formatted p-values
     display_posthoc = posthoc_df.copy()
     display_posthoc["significant"] = display_posthoc["significant"].map({True: "  YES  ", False: "  no   "})
+    for col in ["p_raw", "p_corrected"]:
+        if col in display_posthoc.columns:
+            display_posthoc[col] = display_posthoc[col].map(lambda x: f"{x:.2e}")
     print(display_posthoc.to_string(index=False))
 
     sig_pairs = posthoc_df[posthoc_df["significant"]]
     if len(sig_pairs) > 0:
         print(f"\n  Significant pairs ({len(sig_pairs)}/{len(posthoc_df)}):")
         for _, row in sig_pairs.iterrows():
-            print(f"    {row['opt_A']:>10s} vs {row['opt_B']:<10s}  p_corrected = {row['p_corrected']:.6f}")
+            print(f"    {row['opt_A']:>10s} vs {row['opt_B']:<10s}  p_corrected = {row['p_corrected']:.2e}")
     else:
         print("\n  No significant pairwise differences found.")
 
