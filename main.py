@@ -18,7 +18,7 @@ import os
 #                         CONFIGURATION
 # ============================================================
 
-N_FOLDS = 6               # K-fold cross-validation folds (more = more robust but slower)
+N_FOLDS = 3               # K-fold cross-validation folds (more = more robust but slower)
 EPOCHS_PER_TRIAL = 7      # Training epochs per trial (more = better accuracy but slower)
 EARLY_STOPPING_PATIENCE = 3  # Stop training if validation accuracy falls for this many consecutive epochs
 INITIAL_POINTS = 10        # Specify points for bayesian optimization
