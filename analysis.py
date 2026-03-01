@@ -293,11 +293,20 @@ def compute_kendalls_w(acc_matrix):
 #              VISUALISATIONS
 # ============================================================
 
+def get_optimizer_color_map(optimizers):
+    """Return a consistent optimizer -> color mapping."""
+    unique_opts = sorted(pd.unique(list(optimizers)))
+    cmap = plt.colormaps.get_cmap("tab20")
+    colors = [cmap(i / max(len(unique_opts), 1)) for i in range(len(unique_opts))]
+    return {opt: color for opt, color in zip(unique_opts, colors)}
+
 def plot_accuracy_boxplot(acc_matrix, save_path="results/accuracy_boxplot.png"):
     """Box plot of best accuracy per optimizer across seeds."""
     fig, ax = plt.subplots(figsize=(10, 6))
     melted = acc_matrix.reset_index().melt(id_vars="seed", var_name="Optimizer", value_name="Best Accuracy")
-    sns.boxplot(data=melted, x="Optimizer", y="Best Accuracy", ax=ax, palette="Set2")
+    order = list(acc_matrix.columns)
+    color_map = get_optimizer_color_map(order)
+    sns.boxplot(data=melted, x="Optimizer", y="Best Accuracy", ax=ax, order=order, palette=color_map)
     sns.stripplot(data=melted, x="Optimizer", y="Best Accuracy", ax=ax, color="black", size=4, alpha=0.6)
     ax.set_title("Best Accuracy per Optimizer (across seeds)")
     ax.set_ylabel("Best Cross-Validated Accuracy")
@@ -311,7 +320,9 @@ def plot_mean_rank_bar(acc_matrix, save_path="results/mean_rank.png"):
     """Bar chart of mean ranks (Friedman-style)."""
     mean_ranks = compute_mean_ranks(acc_matrix)
     fig, ax = plt.subplots(figsize=(8, 5))
-    mean_ranks.plot.barh(ax=ax, color="steelblue")
+    color_map = get_optimizer_color_map(mean_ranks.index)
+    bar_colors = [color_map[opt] for opt in mean_ranks.index]
+    mean_ranks.plot.barh(ax=ax, color=bar_colors)
     ax.set_xlabel("Mean Rank (lower = better)")
     ax.set_title("Mean Rank of Optimizers (Friedman)")
     ax.invert_yaxis()
@@ -324,12 +335,14 @@ def plot_mean_rank_bar(acc_matrix, save_path="results/mean_rank.png"):
 def plot_bo_convergence(trials_df, save_path="results/bo_convergence.png"):
     """Plot best-accuracy-so-far over BO iterations, averaged across seeds."""
     fig, ax = plt.subplots(figsize=(10, 6))
+    color_map = get_optimizer_color_map(trials_df["optimizer"].unique())
 
-    for opt in trials_df["optimizer"].unique():
+    for opt in sorted(trials_df["optimizer"].unique()):
         opt_df = trials_df[trials_df["optimizer"] == opt]
         # Average best_accuracy_so_far across seeds per iteration
         convergence = opt_df.groupby("iteration")["best_accuracy_so_far"].mean()
-        ax.plot(convergence.index, convergence.values, marker="o", markersize=3, label=opt)
+        ax.plot(convergence.index, convergence.values, marker="o", markersize=3,
+                label=opt, color=color_map[opt])
 
     ax.axvline(x=INITIAL_POINTS - 0.5, color="gray", linestyle="--", alpha=0.5, label="BO starts")
     ax.set_xlabel("Trial Iteration")
@@ -348,11 +361,11 @@ def plot_lr_vs_accuracy(trials_df, save_path="results/lr_vs_accuracy.png"):
     from statsmodels.nonparametric.smoothers_lowess import lowess
 
     fig, ax = plt.subplots(figsize=(12, 7))
-    palette = plt.cm.get_cmap("tab20", len(trials_df["optimizer"].unique()))
+    color_map = get_optimizer_color_map(trials_df["optimizer"].unique())
 
-    for i, opt in enumerate(sorted(trials_df["optimizer"].unique())):
+    for opt in sorted(trials_df["optimizer"].unique()):
         subset = trials_df[trials_df["optimizer"] == opt].copy()
-        color = palette(i)
+        color = color_map[opt]
 
         # Use log-transformed LR for scatter + LOWESS so spacing is even
         log_lr = np.log10(subset["learning_rate"].values)
@@ -402,11 +415,11 @@ def plot_lr_vs_loss(trials_df, save_path="results/lr_vs_loss.png"):
     df = df[df["final_loss"] > 0]  # needed for log scale
 
     fig, ax = plt.subplots(figsize=(12, 7))
-    palette = plt.cm.get_cmap("tab20", len(df["optimizer"].unique()))
+    color_map = get_optimizer_color_map(df["optimizer"].unique())
 
-    for i, opt in enumerate(sorted(df["optimizer"].unique())):
+    for opt in sorted(df["optimizer"].unique()):
         subset = df[df["optimizer"] == opt]
-        color = palette(i)
+        color = color_map[opt]
         log_lr = np.log10(subset["learning_rate"].values)
 
         ax.scatter(subset["learning_rate"], subset["final_loss"],
@@ -446,13 +459,14 @@ def plot_training_curves(trials_df, save_path="results/training_curves.png"):
         return
 
     fig, ax = plt.subplots(figsize=(10, 6))
+    color_map = get_optimizer_color_map(trials_df["optimizer"].unique())
 
-    for opt in trials_df["optimizer"].unique():
+    for opt in sorted(trials_df["optimizer"].unique()):
         opt_df = trials_df[trials_df["optimizer"] == opt]
         # Pick the best trial per seed, then average the loss curves
         best_per_seed = opt_df.loc[opt_df.groupby("seed")["mean_accuracy"].idxmax()]
         avg_curve = best_per_seed[epoch_loss_cols].mean(axis=0).values
-        ax.plot(range(1, len(avg_curve) + 1), avg_curve, label=opt)
+        ax.plot(range(1, len(avg_curve) + 1), avg_curve, label=opt, color=color_map[opt])
 
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Average Training Loss")
@@ -472,10 +486,11 @@ def plot_ei_over_iterations(trials_df, save_path="results/ei_over_iterations.png
         return
 
     fig, ax = plt.subplots(figsize=(10, 6))
+    color_map = get_optimizer_color_map(bo_trials["optimizer"].unique())
     for opt in sorted(bo_trials["optimizer"].unique()):
         opt_df = bo_trials[bo_trials["optimizer"] == opt]
         ei_avg = opt_df.groupby("iteration")["ei_value"].mean()
-        ax.plot(ei_avg.index, ei_avg.values, marker="o", markersize=3, label=opt)
+        ax.plot(ei_avg.index, ei_avg.values, marker="o", markersize=3, label=opt, color=color_map[opt])
 
     ax.set_xlabel("BO Iteration")
     ax.set_ylabel("Expected Improvement (mean across seeds)")
@@ -500,7 +515,8 @@ def plot_early_stopping_frequency(trials_df, save_path="results/early_stopping_f
 
     fig, ax = plt.subplots(figsize=(10, 6))
     opt_es = df.groupby("optimizer")["es_rate"].mean().sort_values(ascending=False)
-    colors = sns.color_palette("Set2", len(opt_es))
+    color_map = get_optimizer_color_map(opt_es.index)
+    colors = [color_map[opt] for opt in opt_es.index]
     opt_es.plot.bar(ax=ax, color=colors)
     ax.set_ylabel("Early Stopping Rate (fraction of folds)")
     ax.set_xlabel("Optimizer")
@@ -525,7 +541,8 @@ def plot_fold_variance_boxplot(trials_df, save_path="results/fold_variance_boxpl
     fig, ax = plt.subplots(figsize=(10, 6))
     melted = trials_df[["optimizer", "accuracy_std"]].copy()
     order = melted.groupby("optimizer")["accuracy_std"].median().sort_values().index.tolist()
-    sns.boxplot(data=melted, x="optimizer", y="accuracy_std", ax=ax, palette="Set2", order=order)
+    color_map = get_optimizer_color_map(order)
+    sns.boxplot(data=melted, x="optimizer", y="accuracy_std", ax=ax, palette=color_map, order=order)
     ax.set_xlabel("Optimizer")
     ax.set_ylabel("Accuracy Std (across folds)")
     ax.set_title("Cross-Fold Variance per Optimizer (lower = more stable)")
@@ -540,8 +557,9 @@ def plot_best_lr_distribution(summary_df, save_path="results/best_lr_distributio
     """Violin plot of the best learning rate found per optimizer across seeds."""
     fig, ax = plt.subplots(figsize=(10, 6))
     order = sorted(summary_df["optimizer"].unique())
+    color_map = get_optimizer_color_map(order)
     sns.violinplot(data=summary_df, x="optimizer", y="best_learning_rate", ax=ax,
-                   palette="Set2", order=order, inner="point", cut=0)
+                   palette=color_map, order=order, inner="point", cut=0)
     ax.set_yscale("log")
     ax.set_xlabel("Optimizer")
     ax.set_ylabel("Best Learning Rate (log scale)")
@@ -565,11 +583,13 @@ def plot_val_accuracy_curves(trials_df, save_path="results/val_accuracy_curves.p
         return
 
     fig, ax = plt.subplots(figsize=(10, 6))
+    color_map = get_optimizer_color_map(trials_df["optimizer"].unique())
     for opt in sorted(trials_df["optimizer"].unique()):
         opt_df = trials_df[trials_df["optimizer"] == opt]
         best_per_seed = opt_df.loc[opt_df.groupby("seed")["mean_accuracy"].idxmax()]
         avg_curve = best_per_seed[epoch_val_cols].mean(axis=0).values
-        ax.plot(range(1, len(avg_curve) + 1), avg_curve, marker="o", markersize=3, label=opt)
+        ax.plot(range(1, len(avg_curve) + 1), avg_curve, marker="o", markersize=3,
+                label=opt, color=color_map[opt])
 
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Average Validation Accuracy")
@@ -693,7 +713,7 @@ if __name__ == "__main__":
     friedman_df = pd.DataFrame([{
         "Test": "Friedman χ²",
         "Statistic": stat,
-        "p-value": p,
+        "p-value": f"{p:.2e}",
         "Significant": "YES" if p < SIGNIFICANCE_LEVEL else "NO",
         "α": SIGNIFICANCE_LEVEL,
     }])
