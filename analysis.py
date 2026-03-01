@@ -343,17 +343,89 @@ def plot_bo_convergence(trials_df, save_path="results/bo_convergence.png"):
 
 
 def plot_lr_vs_accuracy(trials_df, save_path="results/lr_vs_accuracy.png"):
-    """Scatter plot of learning rate vs accuracy for all trials, coloured by optimizer."""
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for opt in trials_df["optimizer"].unique():
-        subset = trials_df[trials_df["optimizer"] == opt]
+    """Scatter plot of learning rate vs accuracy for all trials, coloured by optimizer,
+    with a LOWESS trend line per optimizer for readability."""
+    from statsmodels.nonparametric.smoothers_lowess import lowess
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+    palette = plt.cm.get_cmap("tab20", len(trials_df["optimizer"].unique()))
+
+    for i, opt in enumerate(sorted(trials_df["optimizer"].unique())):
+        subset = trials_df[trials_df["optimizer"] == opt].copy()
+        color = palette(i)
+
+        # Use log-transformed LR for scatter + LOWESS so spacing is even
+        log_lr = np.log10(subset["learning_rate"].values)
+
+        # Scatter (small, semi-transparent)
         ax.scatter(subset["learning_rate"], subset["mean_accuracy"],
-                   alpha=0.4, s=15, label=opt)
+                   alpha=0.25, s=10, color=color, edgecolors="none")
+
+        # LOWESS trend line
+        if len(subset) >= 5:
+            smoothed = lowess(subset["mean_accuracy"].values, log_lr, frac=0.3, is_sorted=False)
+            sorted_idx = np.argsort(smoothed[:, 0])
+            ax.plot(10 ** smoothed[sorted_idx, 0], smoothed[sorted_idx, 1],
+                    color=color, linewidth=2, label=opt)
+
     ax.set_xscale("log")
     ax.set_xlabel("Learning Rate (log scale)")
     ax.set_ylabel("Mean CV Accuracy")
     ax.set_title("Learning Rate vs Accuracy (all trials)")
-    ax.legend(fontsize=8)
+    ax.legend(fontsize=8, loc="lower left", ncol=2)
+    ax.grid(True, alpha=0.3, which="both")
+    ax.set_ylim(bottom=0.0)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+    print(f"  Saved: {save_path}")
+
+
+def plot_lr_vs_loss(trials_df, save_path="results/lr_vs_loss.png"):
+    """Scatter plot of learning rate vs final training loss (log scale on both axes),
+    with a LOWESS trend line per optimizer."""
+    from statsmodels.nonparametric.smoothers_lowess import lowess
+
+    # Compute final epoch loss for each trial
+    epoch_loss_cols = sorted([c for c in trials_df.columns
+                              if c.startswith("epoch_") and c.endswith("_avg_loss")])
+    if not epoch_loss_cols:
+        print("  Skipping LR vs Loss — no epoch loss columns found.")
+        return
+
+    df = trials_df.copy()
+    # Final loss = last non-NaN epoch loss per trial
+    df["final_loss"] = df[epoch_loss_cols].apply(
+        lambda row: row.dropna().values[-1] if len(row.dropna()) > 0 else np.nan, axis=1
+    )
+    df = df.dropna(subset=["final_loss"])
+    df = df[df["final_loss"] > 0]  # needed for log scale
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+    palette = plt.cm.get_cmap("tab20", len(df["optimizer"].unique()))
+
+    for i, opt in enumerate(sorted(df["optimizer"].unique())):
+        subset = df[df["optimizer"] == opt]
+        color = palette(i)
+        log_lr = np.log10(subset["learning_rate"].values)
+
+        ax.scatter(subset["learning_rate"], subset["final_loss"],
+                   alpha=0.25, s=10, color=color, edgecolors="none")
+
+        if len(subset) >= 5:
+            smoothed = lowess(np.log10(subset["final_loss"].values), log_lr,
+                              frac=0.3, is_sorted=False)
+            sorted_idx = np.argsort(smoothed[:, 0])
+            ax.plot(10 ** smoothed[sorted_idx, 0], 10 ** smoothed[sorted_idx, 1],
+                    color=color, linewidth=2, label=opt)
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("Learning Rate (log scale)")
+    ax.set_ylabel("Final Training Loss (log scale)")
+    ax.set_title("Learning Rate vs Final Training Loss (all trials)")
+    ax.legend(fontsize=8, loc="best", ncol=2)
+    ax.grid(True, alpha=0.3, which="both")
     plt.tight_layout()
     plt.savefig(save_path, dpi=150)
     plt.close()
@@ -386,6 +458,124 @@ def plot_training_curves(trials_df, save_path="results/training_curves.png"):
     ax.set_ylabel("Average Training Loss")
     ax.set_title("Training Loss Curve (best trial per seed, averaged)")
     ax.legend(fontsize=8)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+    print(f"  Saved: {save_path}")
+
+
+def plot_ei_over_iterations(trials_df, save_path="results/ei_over_iterations.png"):
+    """Plot Expected Improvement values over BO iterations, averaged across seeds."""
+    bo_trials = trials_df[trials_df["trial_type"] == "bo"].copy()
+    if bo_trials.empty or "ei_value" not in bo_trials.columns:
+        print("  Skipping EI plot — no BO trials or ei_value column found.")
+        return
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for opt in sorted(bo_trials["optimizer"].unique()):
+        opt_df = bo_trials[bo_trials["optimizer"] == opt]
+        ei_avg = opt_df.groupby("iteration")["ei_value"].mean()
+        ax.plot(ei_avg.index, ei_avg.values, marker="o", markersize=3, label=opt)
+
+    ax.set_xlabel("BO Iteration")
+    ax.set_ylabel("Expected Improvement (mean across seeds)")
+    ax.set_title("Expected Improvement over Bayesian Optimization Iterations")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+    print(f"  Saved: {save_path}")
+
+
+def plot_early_stopping_frequency(trials_df, save_path="results/early_stopping_freq.png"):
+    """Bar chart showing fraction of folds that triggered early stopping, per optimizer."""
+    es_cols = [c for c in trials_df.columns if c.endswith("_early_stopped")]
+    if not es_cols:
+        print("  Skipping early stopping plot — no early_stopped columns found.")
+        return
+
+    df = trials_df.copy()
+    df["es_rate"] = df[es_cols].mean(axis=1)  # fraction of folds that early-stopped per trial
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    opt_es = df.groupby("optimizer")["es_rate"].mean().sort_values(ascending=False)
+    colors = sns.color_palette("Set2", len(opt_es))
+    opt_es.plot.bar(ax=ax, color=colors)
+    ax.set_ylabel("Early Stopping Rate (fraction of folds)")
+    ax.set_xlabel("Optimizer")
+    ax.set_title("Early Stopping Frequency per Optimizer (across all trials & seeds)")
+    ax.set_ylim(0, 1)
+    ax.grid(True, alpha=0.3, axis="y")
+    for i, (opt, val) in enumerate(opt_es.items()):
+        ax.text(i, val + 0.02, f"{val:.1%}", ha="center", fontsize=9)
+    plt.xticks(rotation=0)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+    print(f"  Saved: {save_path}")
+
+
+def plot_fold_variance_boxplot(trials_df, save_path="results/fold_variance_boxplot.png"):
+    """Box plot of accuracy_std (cross-fold variance) per optimizer."""
+    if "accuracy_std" not in trials_df.columns:
+        print("  Skipping fold variance plot — no accuracy_std column found.")
+        return
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    melted = trials_df[["optimizer", "accuracy_std"]].copy()
+    order = melted.groupby("optimizer")["accuracy_std"].median().sort_values().index.tolist()
+    sns.boxplot(data=melted, x="optimizer", y="accuracy_std", ax=ax, palette="Set2", order=order)
+    ax.set_xlabel("Optimizer")
+    ax.set_ylabel("Accuracy Std (across folds)")
+    ax.set_title("Cross-Fold Variance per Optimizer (lower = more stable)")
+    ax.grid(True, alpha=0.3, axis="y")
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+    print(f"  Saved: {save_path}")
+
+
+def plot_best_lr_distribution(summary_df, save_path="results/best_lr_distribution.png"):
+    """Violin plot of the best learning rate found per optimizer across seeds."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    order = sorted(summary_df["optimizer"].unique())
+    sns.violinplot(data=summary_df, x="optimizer", y="best_learning_rate", ax=ax,
+                   palette="Set2", order=order, inner="point", cut=0)
+    ax.set_yscale("log")
+    ax.set_xlabel("Optimizer")
+    ax.set_ylabel("Best Learning Rate (log scale)")
+    ax.set_title("Distribution of Optimal Learning Rate per Optimizer (across seeds)")
+    ax.grid(True, alpha=0.3, axis="y", which="both")
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+    print(f"  Saved: {save_path}")
+
+
+def plot_val_accuracy_curves(trials_df, save_path="results/val_accuracy_curves.png"):
+    """
+    For each optimizer, plot the average validation accuracy curve of the best trial
+    (highest mean_accuracy) averaged across seeds.
+    """
+    epoch_val_cols = [c for c in sorted(trials_df.columns)
+                      if c.startswith("epoch_") and c.endswith("_avg_val_acc")]
+    if not epoch_val_cols:
+        print("  Skipping validation accuracy curves — no epoch val_acc columns found.")
+        return
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for opt in sorted(trials_df["optimizer"].unique()):
+        opt_df = trials_df[trials_df["optimizer"] == opt]
+        best_per_seed = opt_df.loc[opt_df.groupby("seed")["mean_accuracy"].idxmax()]
+        avg_curve = best_per_seed[epoch_val_cols].mean(axis=0).values
+        ax.plot(range(1, len(avg_curve) + 1), avg_curve, marker="o", markersize=3, label=opt)
+
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Average Validation Accuracy")
+    ax.set_title("Validation Accuracy Curve (best trial per seed, averaged)")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150)
     plt.close()
@@ -552,7 +742,13 @@ if __name__ == "__main__":
     plot_mean_rank_bar(acc_matrix)
     plot_bo_convergence(trials_df)
     plot_lr_vs_accuracy(trials_df)
+    plot_lr_vs_loss(trials_df)
     plot_training_curves(trials_df)
     plot_wilcoxon_heatmap(posthoc_df, list(acc_matrix.columns))
+    plot_ei_over_iterations(trials_df)
+    plot_early_stopping_frequency(trials_df)
+    plot_fold_variance_boxplot(trials_df)
+    plot_best_lr_distribution(summary_df)
+    plot_val_accuracy_curves(trials_df)
 
     print("\nDone!")
