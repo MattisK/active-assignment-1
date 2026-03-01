@@ -636,24 +636,30 @@ def print_section(title):
     print("=" * width)
 
 
-def build_optimizer_overview(summary_df):
-    """
-    Build a clean DataFrame summarising each optimizer's performance
-    across all seeds: mean accuracy, std, best/worst seed, best LR range.
-    """
+def build_optimizer_accuracy_overview(summary_df):
+    """Aggregate best_accuracy across seeds for each optimizer."""
     overview = summary_df.groupby("optimizer").agg(
         mean_acc=("best_accuracy", "mean"),
         std_acc=("best_accuracy", "std"),
         min_acc=("best_accuracy", "min"),
         max_acc=("best_accuracy", "max"),
         median_acc=("best_accuracy", "median"),
-        mean_lr=("best_learning_rate", "mean"),
-        min_lr=("best_learning_rate", "min"),
-        max_lr=("best_learning_rate", "max"),
-        mean_loss=("best_final_loss", "mean"),
     ).sort_values("mean_acc", ascending=False)
 
-    # Format for display
+    overview.index.name = "Optimizer"
+    return overview
+
+
+def build_optimizer_lr_overview(summary_df):
+    """Aggregate best_learning_rate across seeds for each optimizer."""
+    overview = summary_df.groupby("optimizer").agg(
+        mean_lr=("best_learning_rate", "mean"),
+        std_lr=("best_learning_rate", "std"),
+        min_lr=("best_learning_rate", "min"),
+        max_lr=("best_learning_rate", "max"),
+        median_lr=("best_learning_rate", "median"),
+    ).sort_values("mean_lr", ascending=False)
+
     overview.index.name = "Optimizer"
     return overview
 
@@ -691,10 +697,15 @@ if __name__ == "__main__":
     summary_display = summary_display.sort_values(["optimizer", "seed"])
     print(summary_display.to_string(index=False))
 
-    # ── Optimizer overview (aggregated across seeds) ──────────
-    print_section("OPTIMIZER OVERVIEW (aggregated across seeds)")
-    overview = build_optimizer_overview(summary_df)
-    print(overview.to_string())
+    # ── Optimizer accuracy overview (aggregated across seeds) ─
+    print_section("OPTIMIZER ACCURACY OVERVIEW (aggregated across seeds)")
+    accuracy_overview = build_optimizer_accuracy_overview(summary_df)
+    print(accuracy_overview.to_string())
+
+    # ── Optimizer LR overview (aggregated across seeds) ───────
+    print_section("OPTIMIZER LEARNING-RATE OVERVIEW (aggregated across seeds)")
+    lr_overview = build_optimizer_lr_overview(summary_df)
+    print(lr_overview.to_string())
 
     # ── Accuracy matrix (seeds × optimizers) ──────────────────
     print_section("ACCURACY MATRIX (seeds × optimizers)")
