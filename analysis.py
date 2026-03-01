@@ -9,9 +9,12 @@ from itertools import combinations
 #                   CONFIGURATION
 # ============================================================
 
-# Must match main.py
+# Optimizer set used in analysis/statistical comparisons.
 MANUAL_SEEDS = [21, 31, 42, 48, 64, 123, 256, 2048, 3651]
-OPTIMIZERS = ["SGD", "Adam", "RMSProp", "AdaGrad"]  # Only those implemented in create_optimizer
+OPTIMIZERS = [
+    "Rprop", "RAdam", "AdamW", "Adam", "Adamax", "NAdam",
+    "SGD", "AdaGrad", "RMSProp", "Adadelta", "ASGD"
+]
 N_FOLDS = 5
 INITIAL_POINTS = 5
 BO_ITERATIONS = 20
