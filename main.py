@@ -306,7 +306,7 @@ def gp_posterior_predict(X_train, y_train, X_test, sigma = 1e-3):
     # Standard deviation
     cov = np.sqrt(np.diag(cov))
 
-    return mu, cov
+    return mu, cov #mu ko
 
 
 def expected_improvement(mu, sigma, best):
@@ -502,7 +502,7 @@ if __name__ == "__main__":
     # Build configuration comments to write at the top of CSVs
     config_comments = [
         ["# Configuration"],
-        ["# N_FOLDS", N_FOLDS],
+        ["# N_FOLDS", N_FOLDS],    
         ["# EPOCHS_PER_TRIAL", EPOCHS_PER_TRIAL],
         ["# EARLY_STOPPING_PATIENCE", EARLY_STOPPING_PATIENCE],
         ["# INITIAL_POINTS", INITIAL_POINTS],
