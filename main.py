@@ -292,7 +292,7 @@ def gp_posterior_predict(X_train, y_train, X_test, sigma = 1e-3):
     # Standard deviation
     cov = np.sqrt(np.diag(cov))
 
-    return mu, cov
+    return mu, cov #mu ko
 
 
 def expected_improvement(mu, sigma, best):
