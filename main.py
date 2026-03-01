@@ -18,17 +18,17 @@ import os
 #                         CONFIGURATION
 # ============================================================
 
-N_FOLDS = 5               # K-fold cross-validation folds (more = more robust but slower)
-EPOCHS_PER_TRIAL = 20      # Training epochs per trial (more = better accuracy but slower)
-EARLY_STOPPING_PATIENCE = 4  # Stop training if validation accuracy falls for this many consecutive epochs
-INITIAL_POINTS = 5        # Specify points for bayesian optimization
-BO_ITERATIONS = 20         # Number of iterations for bayesian optimization
-BO_CANDIDATES = 200       # Set number of candidates for hyperparameter optimization
+N_FOLDS = 3               # K-fold cross-validation folds (more = more robust but slower)
+EPOCHS_PER_TRIAL = 7      # Training epochs per trial (more = better accuracy but slower)
+EARLY_STOPPING_PATIENCE = 3  # Stop training if validation accuracy falls for this many consecutive epochs
+INITIAL_POINTS = 10        # Specify points for bayesian optimization
+BO_ITERATIONS = 5         # Number of iterations for bayesian optimization
+BO_CANDIDATES = 100       # Set number of candidates for hyperparameter optimization
 
 # Data settings
-USE_FULL_DATASET = True   # Set to False to use subset for quick testing
-SUBSET_SIZE = 10000       # Number of samples to use if USE_FULL_DATASET=False
-BATCH_SIZE = 64           # Batch size for training (higher = faster but needs more memory)
+USE_FULL_DATASET = False   # Set to False to use subset for quick testing
+SUBSET_SIZE = 6000       # Number of samples to use if USE_FULL_DATASET=False
+BATCH_SIZE = 512           # Batch size for training (higher = faster but needs more memory)
 
 # Fixed architecture (to isolate learning rate effects)
 NUM_FILTERS = 32
@@ -37,13 +37,13 @@ NUM_UNITS = 32
 
 # Learning rate search space
 LEARNING_RATE_MIN = 0.0001
-LEARNING_RATE_MAX = 0.1
+LEARNING_RATE_MAX = 0.05
 
 # Manual seeds for reproducibility — each seed produces a fully independent run
-MANUAL_SEEDS = [21, 31, 42, 48, 64, 123, 256, 2048, 3651]
+MANUAL_SEEDS = [1, 4, 9, 12, 13, 14, 16, 17, 19, 21, 31, 35, 37, 38, 42, 45, 48, 51, 52, 55, 58, 60, 64, 66, 69, 80, 123, 256, 2048, 3651] # list of 30 random seeds for independent runs; can be extended as needed
 
 # Optimizers to compare
-OPTIMIZERS = ["SGD", "Adam", "RMSProp", "AdaGrad", "Adadelta", "Adafactor", "AdamW", "SparseAdam", "Adamax", "ASGD", "LBFGS", "NAdam", "RAdam", "Rprop"]
+OPTIMIZERS = ["SGD", "Adam", "RMSProp", "AdaGrad", "Adadelta", "AdamW", "Adamax", "ASGD", "NAdam", "RAdam", "Rprop"]
 
 # ============================================================
 #                         Functions
@@ -88,6 +88,20 @@ def create_optimizer(name, model_params, lr):
         return optim.RMSprop(model_params, lr=lr)
     elif name_upper == "ADAGRAD":
         return optim.Adagrad(model_params, lr=lr)
+    elif name_upper == "ADADELTA":
+        return optim.Adadelta(model_params, lr=lr)
+    elif name_upper == "ADAMW":
+        return optim.AdamW(model_params, lr=lr)
+    elif name_upper == "ADAMAX":
+        return optim.Adamax(model_params, lr=lr)
+    elif name_upper == "ASGD":
+        return optim.ASGD(model_params, lr=lr)
+    elif name_upper == "NADAM":
+        return optim.NAdam(model_params, lr=lr)
+    elif name_upper == "RADAM":
+        return optim.RAdam(model_params, lr=lr)
+    elif name_upper == "RPROP":
+        return optim.Rprop(model_params, lr=lr)
     else:
         raise ValueError(f"Unknown optimizer: {name}")
 

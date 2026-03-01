@@ -12,4 +12,7 @@ dependencies = [
     "seaborn",
     "pandas",
     "optuna",
+    "tqdm>=4.67.3",
+    "tdqm>=0.0.1",
+    "tensorflow>=2.20.0",
 ]
